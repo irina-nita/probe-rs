@@ -207,6 +207,11 @@ impl Session {
             }
         }
         probe.attach_to_unspecified()?;
+        if probe.scan_chain().iter().len() > 0 {
+            for core in &cores {
+                probe.select_jtag_tap(core.interface_idx())?;
+            }
+        }
 
         let interface = probe.try_into_arm_interface().map_err(|(_, err)| err)?;
 
@@ -439,9 +444,9 @@ impl Session {
                 other => other?,
             };
             if c.core_halted()? {
-                tracing::debug!("Core {core} already halted");
+                tracing::info!("Core {core} already halted");
             } else {
-                tracing::debug!("Halting core...");
+                tracing::info!("Halting core {core}...");
                 resume_state.push(core);
                 c.halt(Duration::from_millis(100))?;
             }
@@ -770,10 +775,14 @@ impl Session {
     /// Clears all hardware breakpoints on all cores
     pub fn clear_all_hw_breakpoints(&mut self) -> Result<(), Error> {
         self.halted_access(|session| {
-            { 0..session.cores.len() }.try_for_each(|core| match session.core(core) {
-                Ok(mut core) => core.clear_all_hw_breakpoints(),
-                Err(Error::CoreDisabled(_)) => Ok(()),
-                Err(err) => Err(err),
+            { 0..session.cores.len() }.try_for_each(|core| {
+                tracing::info!("Clearing breakpoints for core {core}");
+
+                match session.core(core) {
+                    Ok(mut core) => core.clear_all_hw_breakpoints(),
+                    Err(Error::CoreDisabled(_)) => Ok(()),
+                    Err(err) => Err(err),
+                }
             })
         })
     }
